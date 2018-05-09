@@ -1,0 +1,43 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "3fNi2irNlMcDs4Xrn57f+dcWyGo=",
+			"path": "github.com/franela/goreq",
+			"revision": "bcd34c9993f899273c74baaa95e15386cd97b6e7",
+			"revisionTime": "2017-12-04T16:33:38Z"
+		},
+		{
+			"checksumSHA1": "ljd3FhYRJ91cLZz3wsH9BQQ2JbA=",
+			"path": "github.com/pkg/errors",
+			"revision": "816c9085562cd7ee03e7f8188a1cfd942858cded",
+			"revisionTime": "2018-03-11T21:45:15Z"
+		},
+		{
+			"checksumSHA1": "V9CDrLjO99t1pWBMpfGweLcfCvk=",
+			"path": "github.com/yosemite-open/go-adb",
+			"revision": "bdf825a3d674b851cdfd7cf6831c259ba1794ee1",
+			"revisionTime": "2017-08-22T07:17:32Z"
+		},
+		{
+			"checksumSHA1": "+oczJjwwGWl7jHqLqpyxHZrojTk=",
+			"path": "github.com/yosemite-open/go-adb/internal/errors",
+			"revision": "bdf825a3d674b851cdfd7cf6831c259ba1794ee1",
+			"revisionTime": "2017-08-22T07:17:32Z"
+		},
+		{
+			"checksumSHA1": "SK6CZ8eh9oB2YcsyaoHYH13ZH7k=",
+			"path": "github.com/yosemite-open/go-adb/wire",
+			"revision": "bdf825a3d674b851cdfd7cf6831c259ba1794ee1",
+			"revisionTime": "2017-08-22T07:17:32Z"
+		},
+		{
+			"checksumSHA1": "wz2HIEciCauzwy54UBmaPaDnlcE=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "7db1c3b1a98089d0071c84f646ff5c96aad43682",
+			"revisionTime": "2018-05-07T10:00:10Z"
+		}
+	],
+	"rootPath": "github.com/openatx/u2init"
+}
