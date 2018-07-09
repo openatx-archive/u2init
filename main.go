@@ -3,10 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/gorilla/mux"
 
 	"github.com/pkg/errors"
 	goadb "github.com/yosemite-open/go-adb"
@@ -157,7 +163,7 @@ func watchAndInit(serverAddr string) {
 				log.Printf("Init Success")
 				startService(device)
 				// start identify
-				device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity", 
+				device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
 					"-e", "theme", "red")
 			}
 		}
@@ -168,6 +174,73 @@ func watchAndInit(serverAddr string) {
 	if watcher.Err() != nil {
 		log.Fatal(watcher.Err())
 	}
+}
+
+type SyncProgress struct {
+	Percent  float64
+	Finished bool
+}
+
+func init() {
+	m := mux.NewRouter()
+	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "Hello world!")
+	})
+
+	mu := sync.Mutex{}
+	d := make(map[string]SyncProgress, 0)
+
+	adb, err := goadb.New()
+	if err != nil {
+		panic(err)
+	}
+
+	m.HandleFunc("/install/{serial}", func(w http.ResponseWriter, r *http.Request) {
+		serial := mux.Vars(r)["serial"]
+		device := adb.Device(goadb.DeviceWithSerial(serial))
+		url := r.FormValue("url")
+		if url == "" {
+			http.Error(w, "form value \"url\" is required", http.StatusBadRequest)
+			return
+		}
+		aw, err := device.DoSyncHTTPFile("/sdcard/tmp.apk", url, 0644)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		go func() {
+			for {
+				select {
+				case <-aw.Done:
+					mu.Lock()
+					defer mu.Unlock()
+					d[url] = SyncProgress{100.0, true}
+					return
+				case <-time.After(1 * time.Second):
+					mu.Lock()
+					d[url] = SyncProgress{aw.Progress() * 100, false}
+					mu.Unlock()
+				}
+			}
+		}()
+		mu.Lock()
+		defer mu.Unlock()
+		d[url] = SyncProgress{0.0, false}
+	}).Methods("POST")
+
+	m.HandleFunc("/install/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := mux.Vars(r)["id"]
+		mu.Lock()
+		defer mu.Unlock()
+		pg, ok := d[id]
+		if !ok {
+			io.WriteString(w, "Finished")
+			return
+		}
+		io.WriteString(w, fmt.Sprintf("%.2f %v", pg.Percent, pg.Finished))
+	}).Methods("GET")
+
+	http.Handle("/", m)
 }
 
 func main() {
@@ -182,4 +255,3 @@ func main() {
 
 	watchAndInit(*serverAddr)
 }
-

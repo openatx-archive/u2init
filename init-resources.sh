@@ -4,8 +4,8 @@
 set -e
 
 # Verisons modify here
-ATX_AGENT_VERSION=0.3.1
-UIAUTOMATOR_APK_VERSION=1.0.13
+ATX_AGENT_VERSION=0.3.5
+UIAUTOMATOR_APK_VERSION=1.1.4
 
 RESDIR="resources"
 # Download resources
@@ -19,7 +19,7 @@ download_apk(){
 
 download_stf(){
 	## minicap+minitouch
-	wget -O $RESDIR/stf-binaries.zip "https://github.com/codeskyblue/stf-binaries/archive/master.zip"
+	wget -O $RESDIR/stf-binaries.zip "https://github.com/openatx/stf-binaries/archive/master.zip"
 	unzip -o -d $RESDIR/ $RESDIR/stf-binaries.zip
 }
 
