@@ -3,17 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/gorilla/mux"
-
+	"github.com/phayes/freeport"
 	"github.com/pkg/errors"
 	goadb "github.com/yosemite-open/go-adb"
 )
@@ -176,74 +173,8 @@ func watchAndInit(serverAddr string) {
 	}
 }
 
-type SyncProgress struct {
-	Percent  float64
-	Finished bool
-}
-
-func init() {
-	m := mux.NewRouter()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, "Hello world!")
-	})
-
-	mu := sync.Mutex{}
-	d := make(map[string]SyncProgress, 0)
-
-	adb, err := goadb.New()
-	if err != nil {
-		panic(err)
-	}
-
-	m.HandleFunc("/install/{serial}", func(w http.ResponseWriter, r *http.Request) {
-		serial := mux.Vars(r)["serial"]
-		device := adb.Device(goadb.DeviceWithSerial(serial))
-		url := r.FormValue("url")
-		if url == "" {
-			http.Error(w, "form value \"url\" is required", http.StatusBadRequest)
-			return
-		}
-		aw, err := device.DoSyncHTTPFile("/sdcard/tmp.apk", url, 0644)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		go func() {
-			for {
-				select {
-				case <-aw.Done:
-					mu.Lock()
-					defer mu.Unlock()
-					d[url] = SyncProgress{100.0, true}
-					return
-				case <-time.After(1 * time.Second):
-					mu.Lock()
-					d[url] = SyncProgress{aw.Progress() * 100, false}
-					mu.Unlock()
-				}
-			}
-		}()
-		mu.Lock()
-		defer mu.Unlock()
-		d[url] = SyncProgress{0.0, false}
-	}).Methods("POST")
-
-	m.HandleFunc("/install/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
-		mu.Lock()
-		defer mu.Unlock()
-		pg, ok := d[id]
-		if !ok {
-			io.WriteString(w, "Finished")
-			return
-		}
-		io.WriteString(w, fmt.Sprintf("%.2f %v", pg.Percent, pg.Finished))
-	}).Methods("GET")
-
-	http.Handle("/", m)
-}
-
 func main() {
+	fport := flag.Int("p", 0, "listen port, 0 is for random free port")
 	serverAddr := flag.String("server", "", "atx-server address(must be ip:port) eg: 10.0.0.1:7700")
 	flag.Parse()
 
@@ -253,5 +184,18 @@ func main() {
 	newPath := fmt.Sprintf("%s%s%s", os.Getenv("PATH"), string(os.PathListSeparator), filepath.Join(wd, "resources"))
 	os.Setenv("PATH", newPath)
 
+	registerHTTPHandler()
+	go func() {
+		port := *fport
+		if port == 0 {
+			var err error
+			port, err = freeport.GetFreePort()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		log.Printf("u2init listening on port %d", port)
+		log.Fatal(http.ListenAndServe(":"+strconv.Itoa(port), nil))
+	}()
 	watchAndInit(*serverAddr)
 }
