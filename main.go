@@ -4,12 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/franela/goreq"
 	"github.com/phayes/freeport"
 	"github.com/pkg/errors"
 	goadb "github.com/yosemite-open/go-adb"
@@ -20,6 +22,8 @@ var adb *goadb.Adb
 const stfBinariesDir = "resources/stf-binaries-master/node_modules"
 
 func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	var err error
 	adb, err = goadb.New()
 	if err != nil {
@@ -146,26 +150,65 @@ func startService(device *goadb.Device) (err error) {
 	return err
 }
 
-func watchAndInit(serverAddr string) {
+func deviceUdid(device *goadb.Device) (udid string, port int, err error) {
+	forwardedPort, err := device.ForwardToFreePort(goadb.ForwardSpec{
+		Protocol:   "tcp",
+		PortOrName: "7912",
+	})
+	if err != nil {
+		return
+	}
+	var v struct {
+		Udid string `json:"udid"`
+	}
+	res, err := goreq.Request{
+		Method: "GET",
+		Uri:    fmt.Sprintf("http://127.0.0.1:%d/info", forwardedPort),
+	}.Do()
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	if err = res.Body.FromJsonTo(&v); err != nil {
+		return
+	}
+	return v.Udid, forwardedPort, nil
+}
+
+func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 	watcher := adb.NewDeviceWatcher()
 	for event := range watcher.C() {
 		if event.CameOnline() {
 			log.Printf("Device %s came online", event.Serial)
 			device := adb.Device(goadb.DeviceWithSerial(event.Serial))
-			log.Printf("Init device")
+			log.Printf(event.Serial, "Init device")
 			if err := initUiAutomator2(device, serverAddr); err != nil {
 				log.Printf("Init error: %v", err)
 				continue
 			} else {
-				log.Printf("Init Success")
 				startService(device)
 				// start identify
 				device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
 					"-e", "theme", "red")
+
+				udid, forwardedPort, err := deviceUdid(device)
+				if err != nil {
+					log.Println(event.Serial, err)
+					continue
+				}
+				log.Println(event.Serial, "UDID", udid)
+				log.Println(event.Serial, "7912 forward to", forwardedPort)
+				heart.AddData(event.Serial, map[string]interface{}{
+					"udid":          udid,
+					"status":        "online",
+					"forwardedPort": forwardedPort,
+				})
+				log.Println(event.Serial, "Init Success")
 			}
 		}
 		if event.WentOffline() {
 			log.Printf("Device %s went offline", event.Serial)
+			heart.Delete(event.Serial)
 		}
 	}
 	if watcher.Err() != nil {
@@ -185,17 +228,32 @@ func main() {
 	os.Setenv("PATH", newPath)
 
 	registerHTTPHandler()
-	go func() {
-		port := *fport
-		if port == 0 {
-			var err error
-			port, err = freeport.GetFreePort()
-			if err != nil {
-				log.Fatal(err)
-			}
+	port := *fport
+	if port == 0 {
+		var err error
+		port, err = freeport.GetFreePort()
+		if err != nil {
+			log.Fatal(err)
 		}
-		log.Printf("u2init listening on port %d", port)
-		log.Fatal(http.ListenAndServe(":"+strconv.Itoa(port), nil))
+	}
+	heart := NewHeartbeatClient("http://"+*serverAddr+"/provider/heartbeat", port)
+	log.Println("MachineID:", heart.ID)
+
+	log.Printf("u2init listening on port %d", port)
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
+
+	if err := heart.Ping(); err != nil {
+		log.Fatal("ERROR", err)
+	}
+
+	go heart.PingForever()
+	go func() {
+		log.Fatal(http.Serve(ln, nil))
 	}()
-	watchAndInit(*serverAddr)
+
+	log.Println("Watch and init")
+	watchAndInit(*serverAddr, heart)
 }
