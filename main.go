@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/franela/goreq"
 	"github.com/phayes/freeport"
@@ -67,6 +68,8 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 	}
 	log.Println("Install atx-agent")
 	atxAgentPath := filepath.Join(resourcesDir, "atx-agent")
+	// atxAgentPath = filepath.Join(resourcesDir, "../../atx-agent/atx-agent")
+	// print(atxAgentPath)
 	if err := writeFileToDevice(device, atxAgentPath, "/data/local/tmp/atx-agent", 0755); err != nil {
 		return errors.Wrap(err, "atx-agent")
 	}
@@ -85,7 +88,20 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 	return nil
 }
 
+// write with retry
 func writeFileToDevice(device *goadb.Device, src, dst string, mode os.FileMode) error {
+	for i := 0; i < 3; i++ {
+		if err := unsafeWriteFileToDevice(device, src, dst, mode); err == nil {
+			return nil
+		}
+		if i != 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	return fmt.Errorf("copy file to device failed: %s -> %s", src, dst)
+}
+
+func unsafeWriteFileToDevice(device *goadb.Device, src, dst string, mode os.FileMode) error {
 	f, err := os.Open(src)
 	if err != nil {
 		return err
@@ -157,6 +173,22 @@ func startService(device *goadb.Device) (err error) {
 	return err
 }
 
+func retryGet(url string) (res *goreq.Response, err error) {
+	for i := 0; i < 3; i++ {
+		res, err = goreq.Request{
+			Method: "GET",
+			Uri:    url,
+		}.Do()
+		if err == nil {
+			return
+		}
+		if i != 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	return nil, errors.New("unable get url: " + url)
+}
+
 func deviceUdid(device *goadb.Device) (udid string, port int, err error) {
 	forwardedPort, err := device.ForwardToFreePort(goadb.ForwardSpec{
 		Protocol:   "tcp",
@@ -168,10 +200,11 @@ func deviceUdid(device *goadb.Device) (udid string, port int, err error) {
 	var v struct {
 		Udid string `json:"udid"`
 	}
-	res, err := goreq.Request{
-		Method: "GET",
-		Uri:    fmt.Sprintf("http://127.0.0.1:%d/info", forwardedPort),
-	}.Do()
+	res, err := retryGet(fmt.Sprintf("http://127.0.0.1:%d/info", forwardedPort))
+	// res, err := goreq.Request{
+	// 	Method: "GET",
+	// 	Uri:    fmt.Sprintf("http://127.0.0.1:%d/info", forwardedPort),
+	// }.Do()
 	if err != nil {
 		return
 	}
