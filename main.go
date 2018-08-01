@@ -319,6 +319,10 @@ func main() {
 		}()
 	}
 
-	log.Println("Watch and init")
+	adbVersion, err := adb.ServerVersion()
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println("Watch and init, adb version", adbVersion)
 	watchAndInit(*serverAddr, heart)
 }

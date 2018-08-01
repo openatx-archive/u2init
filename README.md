@@ -35,7 +35,7 @@ First you need to run as root
 
 ```bash
 $ ./u2init --server 10.0.0.1:8000 --initd > /etc/init.d/u2init # server addr should be modified
-$ update-rc.d u2init defaults
+$ update-rc.d u2init defaults 90 # 启动级别90
 ```
 
 That's all, when raspberry next reboot, u2init will started automatically
