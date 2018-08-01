@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -18,8 +19,8 @@ import (
 )
 
 var adb *goadb.Adb
-
-const stfBinariesDir = "resources/stf-binaries-master/node_modules"
+var resourcesDir string
+var stfBinariesDir string
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -34,6 +35,13 @@ func init() {
 		log.Fatal(err)
 	}
 	fmt.Printf("adb server version: %d\n", serverVersion)
+
+	execDir, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	resourcesDir = filepath.Join(filepath.Dir(execDir), "resources")
+	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-master/node_modules")
 }
 
 func initUiAutomator2(device *goadb.Device, serverAddr string) error {
@@ -59,7 +67,7 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 		return errors.Wrap(err, "app-uiautomator[-test].apk")
 	}
 	log.Println("Install atx-agent")
-	atxAgentPath := "resources/atx-agent"
+	atxAgentPath := filepath.Join(resourcesDir, "atx-agent")
 	if err := writeFileToDevice(device, atxAgentPath, "/data/local/tmp/atx-agent", 0755); err != nil {
 		return errors.Wrap(err, "atx-agent")
 	}
@@ -138,11 +146,11 @@ func initUiAutomatorAPK(device *goadb.Device) (err error) {
 		log.Println("APK already installed, Skip. Uninstall apk manually if you want to reinstall apk")
 		return
 	}
-	err = installAPK(device, "resources/app-uiautomator.apk")
+	err = installAPK(device, filepath.Join(resourcesDir, "app-uiautomator.apk"))
 	if err != nil {
 		return
 	}
-	return installAPK(device, "resources/app-uiautomator-test.apk")
+	return installAPK(device, filepath.Join(resourcesDir, "app-uiautomator-test.apk"))
 }
 
 func startService(device *goadb.Device) (err error) {
@@ -220,15 +228,60 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 	}
 }
 
+// Documents: https://testerhome.com/topics/8121
+func generateInitd() {
+	pattern := `#!/bin/sh
+### BEGIN INIT INFO
+# Provides:        ${NAME}
+# Required-Start:  $network
+# Required-Stop:   $network
+# Default-Start:   2 3 4 5
+# Default-Stop:    0 1 6
+# Short-Description: ATX U2init (Provider)
+### END INIT INFO
+
+PATH=/bin:/usr/bin:/usr/local/bin
+
+case "$1" in
+	start)
+		echo "start ${NAME}"
+		${PROGRAM} >> /var/log/${NAME}.log 2>&1 &
+		;;
+	stop)
+		echo "stop ${NAME}"
+		killall ${NAME}
+		;;
+	*)
+		echo "Usage: service ${NAME} <start|stop>"
+		exit 1
+		;;
+esac
+# run the following command to enable ato start
+# update-rc.d ${NAME} defaults
+`
+	program, _ := os.Executable()
+	pattern = strings.Replace(pattern, "${NAME}", filepath.Base(program), -1)
+	pattern = strings.Replace(pattern, "${PROGRAM}", program, -1)
+	fmt.Print(pattern)
+}
+
 func main() {
 	fport := flag.Int("p", 0, "listen port, 0 is for random free port")
 	serverAddr := flag.String("server", "", "atx-server address(must be ip:port) eg: 10.0.0.1:7700")
+	initd := flag.Bool("initd", false, "Generate /etc/init.d file (Debian only)")
 	flag.Parse()
 
+	if *initd {
+		if runtime.GOOS == "windows" {
+			log.Fatal("Only works in linux")
+		}
+		generateInitd()
+		return
+	}
+
 	fmt.Println("u2init version 20180330")
-	wd, _ := os.Getwd()
-	log.Println("Add adb.exe to PATH +=", filepath.Join(wd, "resources"))
-	newPath := fmt.Sprintf("%s%s%s", os.Getenv("PATH"), string(os.PathListSeparator), filepath.Join(wd, "resources"))
+	log.Println("Add adb.exe to PATH +=", resourcesDir)
+	newPath := fmt.Sprintf("%s%s%s", os.Getenv("PATH"), string(os.PathListSeparator), resourcesDir)
 	os.Setenv("PATH", newPath)
 
 	var heart *HeartbeatClient

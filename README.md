@@ -22,7 +22,7 @@ Assume your atx-server addr is `10.0.0.1:8000`
 
 u2init is also provider service to install apk through REST API
 
-Launch u2init with options `-p $PORT`
+Launch u2init with options `-p $PORT`, default is a random port
 
 ```bash
 ./u2init -p 8000
@@ -30,6 +30,17 @@ Launch u2init with options `-p $PORT`
 
 Open another terminal, the `$SERIAL` is the device serial number.
 
+## How to start u2init automatically on boot (RaspberryPi)
+First you need to run as root
+
+```bash
+$ ./u2init --initd > /etc/init.d/u2init
+$ update-rc.d u2init defaults
+```
+
+That's all, when raspberry next reboot, u2init will started automatically
+
+## REST API
 ```bash
 # Only support URL now.
 $ curl -X POST -F url="https://gohttp.nie.netease.com/tools/apks/qrcodescan-2.6.0-green.apk" localhost:8000/install/$SERIAL
