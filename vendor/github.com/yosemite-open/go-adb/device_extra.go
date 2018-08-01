@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/franela/goreq"
+	retryablehttp "github.com/hashicorp/go-retryablehttp"
 )
 
 type Process struct {
@@ -217,11 +218,13 @@ func (c *Device) DoSyncLocalFile(dst string, src string, perms os.FileMode) (aw 
 }
 
 func (c *Device) DoSyncHTTPFile(dst string, srcUrl string, perms os.FileMode) (aw *AsyncWriter, err error) {
-	res, err := goreq.Request{
-		Uri:             srcUrl,
-		RedirectHeaders: true,
-		MaxRedirects:    10,
-	}.Do()
+	res, err := retryablehttp.Get(srcUrl)
+
+	// res, err := goreq.Request{
+	// 	Uri:             srcUrl,
+	// 	RedirectHeaders: true,
+	// 	MaxRedirects:    10,
+	// }.Do()
 	if err != nil {
 		return
 	}

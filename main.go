@@ -181,7 +181,7 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 		if event.CameOnline() {
 			log.Printf("Device %s came online", event.Serial)
 			device := adb.Device(goadb.DeviceWithSerial(event.Serial))
-			log.Printf(event.Serial, "Init device")
+			log.Println(event.Serial, "Init device")
 			if err := initUiAutomator2(device, serverAddr); err != nil {
 				log.Printf("Init error: %v", err)
 				continue
@@ -198,17 +198,21 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 				}
 				log.Println(event.Serial, "UDID", udid)
 				log.Println(event.Serial, "7912 forward to", forwardedPort)
-				heart.AddData(event.Serial, map[string]interface{}{
-					"udid":          udid,
-					"status":        "online",
-					"forwardedPort": forwardedPort,
-				})
+				if heart != nil {
+					heart.AddData(event.Serial, map[string]interface{}{
+						"udid":                  udid,
+						"status":                "online",
+						"providerForwardedPort": forwardedPort,
+					})
+				}
 				log.Println(event.Serial, "Init Success")
 			}
 		}
 		if event.WentOffline() {
 			log.Printf("Device %s went offline", event.Serial)
-			heart.Delete(event.Serial)
+			if heart != nil {
+				heart.Delete(event.Serial)
+			}
 		}
 	}
 	if watcher.Err() != nil {
@@ -227,32 +231,35 @@ func main() {
 	newPath := fmt.Sprintf("%s%s%s", os.Getenv("PATH"), string(os.PathListSeparator), filepath.Join(wd, "resources"))
 	os.Setenv("PATH", newPath)
 
-	registerHTTPHandler()
-	port := *fport
-	if port == 0 {
-		var err error
-		port, err = freeport.GetFreePort()
-		if err != nil {
-			log.Fatal(err)
+	var heart *HeartbeatClient
+	if *serverAddr != "" {
+		registerHTTPHandler()
+		port := *fport
+		if port == 0 {
+			var err error
+			port, err = freeport.GetFreePort()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-	}
-	heart := NewHeartbeatClient("http://"+*serverAddr+"/provider/heartbeat", port)
-	log.Println("MachineID:", heart.ID)
+		heart = NewHeartbeatClient("http://"+*serverAddr+"/provider/heartbeat", port)
+		log.Println("MachineID:", heart.ID)
 
-	log.Printf("u2init listening on port %d", port)
-	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	if err != nil {
-		panic(err)
-	}
+		log.Printf("u2init listening on port %d", port)
+		ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+		if err != nil {
+			panic(err)
+		}
 
-	if err := heart.Ping(); err != nil {
-		log.Fatal("ERROR", err)
-	}
+		if err := heart.Ping(); err != nil {
+			log.Println("Warning", err)
+		}
 
-	go heart.PingForever()
-	go func() {
-		log.Fatal(http.Serve(ln, nil))
-	}()
+		go heart.PingForever()
+		go func() {
+			log.Fatal(http.Serve(ln, nil))
+		}()
+	}
 
 	log.Println("Watch and init")
 	watchAndInit(*serverAddr, heart)

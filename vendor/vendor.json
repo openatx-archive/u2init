@@ -15,10 +15,11 @@
 			"revisionTime": "2018-03-11T21:45:15Z"
 		},
 		{
-			"checksumSHA1": "V9CDrLjO99t1pWBMpfGweLcfCvk=",
+			"checksumSHA1": "nKjhQCdw7g/DVATRyochgiBL46I=",
 			"path": "github.com/yosemite-open/go-adb",
-			"revision": "bdf825a3d674b851cdfd7cf6831c259ba1794ee1",
-			"revisionTime": "2017-08-22T07:17:32Z"
+			"revision": "24f73db3ea3501eed0e8cfa7ff27db4744d7926c",
+			"revisionTime": "2018-08-01T02:04:40Z",
+			"tree": true
 		},
 		{
 			"checksumSHA1": "+oczJjwwGWl7jHqLqpyxHZrojTk=",

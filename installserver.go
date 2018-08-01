@@ -140,6 +140,10 @@ func registerHTTPHandler() {
 		}()
 	}).Methods("POST")
 
+	m.HandleFunc("/install/{serial}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/install/"+mux.Vars(r)["id"], 302)
+	})
+
 	m.HandleFunc("/install/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := mux.Vars(r)["id"]
 		state := dashboard.Get(id)
