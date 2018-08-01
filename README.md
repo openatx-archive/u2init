@@ -34,7 +34,7 @@ Open another terminal, the `$SERIAL` is the device serial number.
 First you need to run as root
 
 ```bash
-$ ./u2init --initd > /etc/init.d/u2init
+$ ./u2init --server 10.0.0.1:8000 --initd > /etc/init.d/u2init # server addr should be modified
 $ update-rc.d u2init defaults
 ```
 

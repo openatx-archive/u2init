@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -30,11 +29,11 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverVersion, err := adb.ServerVersion()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("adb server version: %d\n", serverVersion)
+	// serverVersion, err := adb.ServerVersion()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// fmt.Printf("adb server version: %d\n", serverVersion)
 
 	execDir, err := os.Executable()
 	if err != nil {
@@ -229,7 +228,10 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 }
 
 // Documents: https://testerhome.com/topics/8121
-func generateInitd() {
+func generateInitd(serverAddr string) {
+	if serverAddr == "" {
+		log.Fatal("-server is required")
+	}
 	pattern := `#!/bin/sh
 ### BEGIN INIT INFO
 # Provides:        ${NAME}
@@ -241,11 +243,13 @@ func generateInitd() {
 ### END INIT INFO
 
 PATH=/bin:/usr/bin:/usr/local/bin
+PROGRAM=${PROGRAM}
+ARGS="-server ${SERVER}"
 
 case "$1" in
 	start)
 		echo "start ${NAME}"
-		${PROGRAM} >> /var/log/${NAME}.log 2>&1 &
+		$PROGRAM $ARGS >> /var/log/${NAME}.log 2>&1 &
 		;;
 	stop)
 		echo "stop ${NAME}"
@@ -262,6 +266,7 @@ esac
 	program, _ := os.Executable()
 	pattern = strings.Replace(pattern, "${NAME}", filepath.Base(program), -1)
 	pattern = strings.Replace(pattern, "${PROGRAM}", program, -1)
+	pattern = strings.Replace(pattern, "${SERVER}", serverAddr, -1)
 	fmt.Print(pattern)
 }
 
@@ -272,10 +277,10 @@ func main() {
 	flag.Parse()
 
 	if *initd {
-		if runtime.GOOS == "windows" {
-			log.Fatal("Only works in linux")
-		}
-		generateInitd()
+		// if runtime.GOOS == "windows" {
+		// 	log.Fatal("Only works in linux")
+		// }
+		generateInitd(*serverAddr)
 		return
 	}
 
