@@ -129,7 +129,7 @@ func registerHTTPHandler() {
 			// do install
 			output, err := device.RunCommand("pm", "install", "-r", "-t", tmpPath)
 			if err != nil {
-				state.State = "err: " + err.Error()
+				state.State = "err: " + err.Error() + ":" + output
 				return
 			}
 			if strings.Contains(output, "Success") {

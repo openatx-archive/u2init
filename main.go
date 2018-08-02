@@ -74,7 +74,7 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 		return errors.Wrap(err, "atx-agent")
 	}
 
-	args := []string{"-d", "-nouia"}
+	args := []string{"-d"} //, "-nouia"}
 	if serverAddr != "" {
 		args = append(args, "-t", serverAddr)
 	}
@@ -161,6 +161,8 @@ func initUiAutomatorAPK(device *goadb.Device) (err error) {
 		log.Println("APK already installed, Skip. Uninstall apk manually if you want to reinstall apk")
 		return
 	}
+	device.RunCommand("pm", "uninstall", "com.github.uiautomator")
+	device.RunCommand("pm", "uninstall", "com.github.uiautomator.test")
 	err = installAPK(device, filepath.Join(resourcesDir, "app-uiautomator.apk"))
 	if err != nil {
 		return
