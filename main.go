@@ -74,6 +74,8 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 		return errors.Wrap(err, "atx-agent")
 	}
 
+	device.RunCommand("/data/local/tmp/atx-agent", "-stop") // TODO(ssx): stop atx-agent first to force update
+
 	args := []string{"-d"} //, "-nouia"}
 	if serverAddr != "" {
 		args = append(args, "-t", serverAddr)
