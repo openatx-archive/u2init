@@ -66,6 +66,7 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 	if err := initUiAutomatorAPK(device); err != nil {
 		return errors.Wrap(err, "app-uiautomator[-test].apk")
 	}
+
 	log.Println("Install atx-agent")
 	atxAgentPath := filepath.Join(resourcesDir, "atx-agent")
 	// atxAgentPath = filepath.Join(resourcesDir, "../../atx-agent/atx-agent")
@@ -160,7 +161,7 @@ func initUiAutomatorAPK(device *goadb.Device) (err error) {
 	_, er1 := device.StatPackage("com.github.uiautomator")
 	_, er2 := device.StatPackage("com.github.uiautomator.test")
 	if er1 == nil && er2 == nil {
-		log.Println("APK already installed, Skip. Uninstall apk manually if you want to reinstall apk")
+		log.Println("uiautomator apk already installed, Skip")
 		return
 	}
 	device.RunCommand("pm", "uninstall", "com.github.uiautomator")
@@ -229,28 +230,27 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 			if err := initUiAutomator2(device, serverAddr); err != nil {
 				log.Printf("Init error: %v", err)
 				continue
-			} else {
-				startService(device)
-				// start identify
-				device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
-					"-e", "theme", "red")
-
-				udid, forwardedPort, err := deviceUdid(device)
-				if err != nil {
-					log.Println(event.Serial, err)
-					continue
-				}
-				log.Println(event.Serial, "UDID", udid)
-				log.Println(event.Serial, "7912 forward to", forwardedPort)
-				if heart != nil {
-					heart.AddData(event.Serial, map[string]interface{}{
-						"udid":                  udid,
-						"status":                "online",
-						"providerForwardedPort": forwardedPort,
-					})
-				}
-				log.Println(event.Serial, "Init Success")
 			}
+			startService(device)
+			// start identify
+			device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
+				"-e", "theme", "red")
+
+			udid, forwardedPort, err := deviceUdid(device)
+			if err != nil {
+				log.Println(event.Serial, err)
+				continue
+			}
+			log.Println(event.Serial, "UDID", udid)
+			log.Println(event.Serial, "7912 forward to", forwardedPort)
+			if heart != nil {
+				heart.AddData(event.Serial, map[string]interface{}{
+					"udid":                  udid,
+					"status":                "online",
+					"providerForwardedPort": forwardedPort,
+				})
+			}
+			log.Println(event.Serial, "Init Success")
 		}
 		if event.WentOffline() {
 			log.Printf("Device %s went offline", event.Serial)

@@ -6,7 +6,7 @@ set -e
 # Verisons modify here
 ATX_AGENT_VERSION=0.4.0
 UIAUTOMATOR_APK_VERSION=1.1.4
-STF_BINARIES_VERSION=0.1
+STF_BINARIES_VERSION=0.2
 
 RESDIR="resources"
 # Download resources
