@@ -1,9 +1,7 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -12,9 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mholt/archiver"
+
+	"github.com/alecthomas/kingpin"
+	"github.com/cavaliercoder/grab"
 	"github.com/franela/goreq"
 	"github.com/phayes/freeport"
 	"github.com/pkg/errors"
+	"github.com/qiniu/log"
 	goadb "github.com/yosemite-open/go-adb"
 )
 
@@ -30,18 +33,6 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// serverVersion, err := adb.ServerVersion()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("adb server version: %d\n", serverVersion)
-
-	execDir, err := os.Executable()
-	if err != nil {
-		log.Fatal(err)
-	}
-	resourcesDir = filepath.Join(filepath.Dir(execDir), "resources")
-	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-master/node_modules")
 }
 
 func initUiAutomator2(device *goadb.Device, serverAddr string) error {
@@ -68,7 +59,7 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 	}
 
 	log.Println("Install atx-agent")
-	atxAgentPath := filepath.Join(resourcesDir, "atx-agent")
+	atxAgentPath := filepath.Join(resourcesDir, "atx-agent-armv6/atx-agent")
 	// atxAgentPath = filepath.Join(resourcesDir, "../../atx-agent/atx-agent")
 	// print(atxAgentPath)
 	if err := writeFileToDevice(device, atxAgentPath, "/data/local/tmp/atx-agent", 0755); err != nil {
@@ -307,17 +298,80 @@ esac
 	fmt.Print(pattern)
 }
 
-func main() {
-	fport := flag.Int("p", 0, "listen port, 0 is for random free port")
-	serverAddr := flag.String("server", "", "atx-server address(must be ip:port) eg: 10.0.0.1:7700")
-	initd := flag.Bool("initd", false, "Generate /etc/init.d file (Debian only)")
-	flag.Parse()
+type Versions struct {
+	AgentVersion string `json:"atx-agent"`
+	ApkVersion   string `json:"uiautomator-apk"`
+}
 
-	if *initd {
+func getVersions(serverAddr string) (vers Versions, err error) {
+	res, err := goreq.Request{
+		Method: "GET",
+		Uri:    serverAddr + "/version",
+	}.Do()
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	err = res.Body.FromJsonTo(&vers)
+	return
+}
+
+func httpDownload(dst string, url string) (cached bool, err error) {
+	if _, err := os.Stat(dst); err == nil {
+		return true, nil
+	}
+	resp, err := grab.Get(dst+".cached", url)
+	if err != nil {
+		return false, err
+	}
+	log.Info("Download saved to", resp.Filename)
+	return false, os.Rename(dst+".cached", dst)
+}
+
+func initResources(serverAddr string) error {
+	vers, err := getVersions(serverAddr)
+	if err != nil {
+		return err
+	}
+	githubMirror := "https://github-mirror.open.netease.com"
+	agentReleaseURL := FormatString(githubMirror+"/openatx/atx-agent/releases/download/${ATX_AGENT_VERSION}/atx-agent_${ATX_AGENT_VERSION}_linux_armv6.tar.gz", map[string]string{
+		"ATX_AGENT_VERSION": vers.AgentVersion,
+	})
+	log.Println("Agent version", vers.AgentVersion)
+	log.Println("Download from", agentReleaseURL)
+	dstPath := resourcesDir + fmt.Sprintf("/atx-agent-%s.tar.gz", vers.AgentVersion)
+	cached, err := httpDownload(dstPath, agentReleaseURL)
+	if err != nil {
+		return err
+	}
+	if cached {
+		log.Info("Use cached resource")
+	}
+	return archiver.TarGz.Open(dstPath, resourcesDir+"/atx-agent-armv6")
+}
+
+func main() {
+	fport := kingpin.Flag("port", "listen port, random free port if not specified").Short('p').Int()
+	fServerAddr := kingpin.Flag("server", "atx-server address, format must be ip:port or hostname").Required().String()
+	fInitd := kingpin.Flag("initd", "Generate /etc/init.d file (Debian only)").Bool()
+
+	execDir, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	kingpin.Flag("resdir", "directory contains minicap, apk etc resources").
+		Default(filepath.Join(filepath.Dir(execDir), "resources")).StringVar(&resourcesDir)
+
+	kingpin.CommandLine.HelpFlag.Short('h')
+	kingpin.Parse()
+
+	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-master/node_modules")
+
+	if *fInitd {
 		// if runtime.GOOS == "windows" {
 		// 	log.Fatal("Only works in linux")
 		// }
-		generateInitd(*serverAddr)
+		generateInitd(*fServerAddr)
 		return
 	}
 
@@ -327,39 +381,46 @@ func main() {
 	os.Setenv("PATH", newPath)
 
 	var heart *HeartbeatClient
-	if *serverAddr != "" {
-		registerHTTPHandler()
-		port := *fport
-		if port == 0 {
-			var err error
-			port, err = freeport.GetFreePort()
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		heart = NewHeartbeatClient("http://"+*serverAddr+"/provider/heartbeat", port)
-		log.Println("MachineID:", heart.ID)
 
-		log.Printf("u2init listening on port %d", port)
-		ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	registerHTTPHandler()
+	port := *fport
+	if port == 0 {
+		var err error
+		port, err = freeport.GetFreePort()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
-
-		if err := heart.Ping(); err != nil {
-			log.Println("Warning", err)
-		}
-
-		go heart.PingForever()
-		go func() {
-			log.Fatal(http.Serve(ln, nil))
-		}()
 	}
+	heart = NewHeartbeatClient("http://"+*fServerAddr+"/provider/heartbeat", port)
+	log.Println("MachineID:", heart.ID)
+
+	log.Printf("u2init listening on port %d", port)
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
+
+	err = heart.Ping()
+	if err != nil {
+		log.Println("Warning", err)
+	} else {
+		// FIXME(ssx): init resources on every time reconnected
+		err := initResources("http://" + *fServerAddr)
+		if err != nil {
+			log.Warnf("init resources %v", err)
+		}
+		log.Println("resources downloaded. ^_^")
+	}
+
+	go heart.PingForever()
+	go func() {
+		log.Fatal(http.Serve(ln, nil))
+	}()
 
 	adbVersion, err := adb.ServerVersion()
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("Watch and init, adb version", adbVersion)
-	watchAndInit(*serverAddr, heart)
+	watchAndInit(*fServerAddr, heart)
 }

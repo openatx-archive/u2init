@@ -1,5 +1,12 @@
-# uiautomator2 init offline
-This is for project [uiautomator2](https://github.com/openatx/uiautomator2).
+# uiautomator2 init for atx-server
+**Beta**
+
+This is project relies on project [atx-server](https://github.com/openatx/atx-server)
+
+So you need atx-server installed before use this project.
+
+u2init is very similar to stf-provider.
+If there is android phone connected to a PC which running u2init, Some resources(minicap, minitouch, apks, atx-agent) will be pushed into device automatically. And you can see this device show up in atx-server in a minute.
 
 ## Installation
 First install [go](https://golang.org) environment
@@ -9,7 +16,7 @@ $ go get -v github.com/openatx/u2init
 $ cd $GOPATH/src/github.com/openatx/u2init
 $ go build
 
-# download stf stuffs(minitouch, minicap), atx-agent, uiautomator.apk(two apk actually)
+# download stf stuffs(minitouch, minicap), uiautomator.apk(two apk actually)
 $ ./init-resources.sh
 ```
 
@@ -17,20 +24,20 @@ $ ./init-resources.sh
 Assume your atx-server addr is `10.0.0.1:8000`
 
 ```bash
-./u2init -server 10.0.0.1:8000
+./u2init --server 10.0.0.1:8000
 ```
 
 u2init is also provider service to install apk through REST API
 
-Launch u2init with options `-p $PORT`, default is a random port
+Use `./u2init -h` to known more usages.
 
-```bash
-./u2init -p 8000
-```
+## How it works
+Download **atx-agent**
 
-Open another terminal, the `$SERIAL` is the device serial number.
+1. u2init get atx-agent version from URL `$ATX_SERVER_URL/version`.
+2. If not found the specified version of atx-agent in dir `./resources`, atx-agent will downloaded from github.
 
-## How to start u2init automatically on boot (RaspberryPi)
+## Enable u2init start automatically on boot (RaspberryPi)
 First you need to run as root
 
 ```bash
@@ -38,7 +45,7 @@ $ ./u2init --server 10.0.0.1:8000 --initd > /etc/init.d/u2init # server addr sho
 $ update-rc.d u2init defaults 90 # 启动级别90
 ```
 
-That's all, when raspberry next reboot, u2init will started automatically
+That's all, when raspberry reboot, u2init will started automatically
 
 ## REST API
 ```bash
@@ -57,7 +64,7 @@ $ curl -X GET localhost:8000/install/7
 # message can be "pushing", "installing", "finished" or "err: xxxx-some failure resone here-xxxx"
 ```
 
-Then you are ready to go. Any plugin devices will be inited automaticlly.
+Then you are ready to go. Any plugged-in devices will be inited automaticlly.
 
 ## LICENSE
 [MIT](LICENSE)
