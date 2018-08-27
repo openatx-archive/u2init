@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mholt/archiver"
-
+	"github.com/Masterminds/semver"
 	"github.com/alecthomas/kingpin"
 	"github.com/cavaliercoder/grab"
 	"github.com/franela/goreq"
+	"github.com/mholt/archiver"
 	"github.com/phayes/freeport"
 	"github.com/pkg/errors"
 	"github.com/qiniu/log"
@@ -24,9 +24,12 @@ import (
 var adb *goadb.Adb
 var resourcesDir string
 var stfBinariesDir string
+var apkVersionConstraint *semver.Constraints
+var versions Versions // contains apk version and atx-agent version
 
 func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetFlags(log.LstdFlags | log.Lshortfile | log.Llevel)
+	log.SetOutputLevel(log.Ldebug)
 
 	var err error
 	adb, err = goadb.New()
@@ -35,7 +38,7 @@ func init() {
 	}
 }
 
-func initUiAutomator2(device *goadb.Device, serverAddr string) error {
+func initEverything(device *goadb.Device, serverAddr string) error {
 	props, err := device.Properties()
 	if err != nil {
 		return err
@@ -49,16 +52,16 @@ func initUiAutomator2(device *goadb.Device, serverAddr string) error {
 	if pre != "" && pre != "0" {
 		sdk += pre
 	}
-	log.Println("Install minicap and minitouch")
+	log.Println("Process minicap and minitouch")
 	if err := initSTFMiniTools(device, abi, sdk); err != nil {
 		return errors.Wrap(err, "mini(cap|touch)")
 	}
-	log.Println("Install app-uiautomator[-test].apk")
-	if err := initUiAutomatorAPK(device); err != nil {
+	log.Println("Process app-uiautomator[-test].apk")
+	if err := initAPK(device); err != nil {
 		return errors.Wrap(err, "app-uiautomator[-test].apk")
 	}
 
-	log.Println("Install atx-agent")
+	log.Println("Process atx-agent")
 	atxAgentPath := filepath.Join(resourcesDir, "atx-agent-armv6/atx-agent")
 	// atxAgentPath = filepath.Join(resourcesDir, "../../atx-agent/atx-agent")
 	// print(atxAgentPath)
@@ -148,20 +151,52 @@ func installAPK(device *goadb.Device, localPath string) error {
 	return nil
 }
 
-func initUiAutomatorAPK(device *goadb.Device) (err error) {
-	_, er1 := device.StatPackage("com.github.uiautomator")
-	_, er2 := device.StatPackage("com.github.uiautomator.test")
-	if er1 == nil && er2 == nil {
-		log.Println("uiautomator apk already installed, Skip")
-		return
-	}
-	device.RunCommand("pm", "uninstall", "com.github.uiautomator")
-	device.RunCommand("pm", "uninstall", "com.github.uiautomator.test")
-	err = installAPK(device, filepath.Join(resourcesDir, "app-uiautomator.apk"))
+// check if apk info right
+func checkAPK(device *goadb.Device) bool {
+	info, err := device.StatPackage("com.github.uiautomator")
 	if err != nil {
+		log.Debugf("package com.github.uiautomator not installed")
+		return false
+	}
+	curver, err := semver.NewVersion(info.Version.Name)
+	if err != nil {
+		log.Debugf("package com.github.uiautomator version format error, %s", info.Version.Name)
+		return false
+	}
+	if !apkVersionConstraint.Check(curver) {
+		log.Debugf("package com.github.uiautomator version outdated, %s", info.Version.Name)
+		return false
+	}
+	if info.Version.Name != versions.ApkVersion {
+		log.Debugf("apk version %s > required version %s", info.Version.Name, versions.ApkVersion)
+	}
+	_, err = device.StatPackage("com.github.uiautomator.test")
+	if err != nil {
+		log.Debugf("package com.github.uiautomator.test not installed")
+	}
+	return err == nil
+}
+
+func initAPK(device *goadb.Device) (err error) {
+	if checkAPK(device) {
+		log.Printf("uiautomator-apks already installed")
 		return
 	}
-	return installAPK(device, filepath.Join(resourcesDir, "app-uiautomator-test.apk"))
+	device.RunCommand("pm", "uninstall", "com.github.uiautomator.test")
+	device.RunCommand("pm", "uninstall", "com.github.uiautomator")
+	err = installAPK(device, filepath.Join(resourcesDir, fmt.Sprintf("app-uiautomator-%s.apk", versions.ApkVersion)))
+	if err != nil {
+		return errors.Wrap(err, "com.github.uiautomator")
+	}
+	err = installAPK(device, filepath.Join(resourcesDir, fmt.Sprintf("app-uiautomator-test-%s.apk", versions.ApkVersion)))
+	if err != nil {
+		return errors.Wrap(err, "com.github.uiautomator.test")
+	}
+	if checkAPK(device) {
+		log.Printf("uiautomator-apks successfully installed")
+		return nil
+	}
+	return errors.New("install apk failed")
 }
 
 func startService(device *goadb.Device) (err error) {
@@ -218,14 +253,14 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 			log.Printf("Device %s came online", event.Serial)
 			device := adb.Device(goadb.DeviceWithSerial(event.Serial))
 			log.Println(event.Serial, "Init device")
-			if err := initUiAutomator2(device, serverAddr); err != nil {
-				log.Printf("Init error: %v", err)
+			if err := initEverything(device, serverAddr); err != nil {
+				log.Printf("Init error: %v", errors.Wrap(err, event.Serial))
 				continue
 			}
 			startService(device)
 			// start identify
 			device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
-				"-e", "theme", "red")
+				"-e", "theme", "black")
 
 			udid, forwardedPort, err := deviceUdid(device)
 			if err != nil {
@@ -333,6 +368,12 @@ func initResources(serverAddr string) error {
 	if err != nil {
 		return err
 	}
+	// TODO: atx-server should contains apk version
+	if vers.ApkVersion == "" {
+		vers.ApkVersion = "1.1.5"
+	}
+	versions = vers
+	// atx-agent
 	githubMirror := "https://github-mirror.open.netease.com"
 	agentReleaseURL := FormatString(githubMirror+"/openatx/atx-agent/releases/download/${ATX_AGENT_VERSION}/atx-agent_${ATX_AGENT_VERSION}_linux_armv6.tar.gz", map[string]string{
 		"ATX_AGENT_VERSION": vers.AgentVersion,
@@ -347,12 +388,26 @@ func initResources(serverAddr string) error {
 	if cached {
 		log.Info("Use cached resource")
 	}
-	return archiver.TarGz.Open(dstPath, resourcesDir+"/atx-agent-armv6")
+	err = archiver.TarGz.Open(dstPath, resourcesDir+"/atx-agent-armv6")
+	if err != nil {
+		return errors.Wrap(err, "open targz")
+	}
+	// app-uiautomator apks
+	apkReleaseBaseURL := FormatString(githubMirror+"/openatx/android-uiautomator-server/releases/download/${APK_VERSION}/", map[string]string{
+		"APK_VERSION": vers.ApkVersion,
+	})
+	suffix := fmt.Sprintf("-%s.apk", vers.ApkVersion)
+	_, err = httpDownload(resourcesDir+"/app-uiautomator"+suffix, apkReleaseBaseURL+"app-uiautomator.apk")
+	if err != nil {
+		return err
+	}
+	_, err = httpDownload(resourcesDir+"/app-uiautomator-test"+suffix, apkReleaseBaseURL+"app-uiautomator-test.apk")
+	return err
 }
 
 func main() {
 	fport := kingpin.Flag("port", "listen port, random free port if not specified").Short('p').Int()
-	fServerAddr := kingpin.Flag("server", "atx-server address, format must be ip:port or hostname").Required().String()
+	fServerAddr := kingpin.Flag("server", "atx-server address, format must be ip:port or hostname").Short('s').Required().String()
 	fInitd := kingpin.Flag("initd", "Generate /etc/init.d file (Debian only)").Bool()
 
 	execDir, err := os.Executable()
@@ -396,6 +451,12 @@ func main() {
 
 	log.Printf("u2init listening on port %d", port)
 	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
+
+	// FIXME(ssx): get apk version from server
+	apkVersionConstraint, err = semver.NewConstraint(">= 1.1.5")
 	if err != nil {
 		panic(err)
 	}

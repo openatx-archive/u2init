@@ -5,7 +5,7 @@ set -e
 
 # Verisons modify here
 # ATX_AGENT_VERSION=0.4.2
-UIAUTOMATOR_APK_VERSION=1.1.5
+# UIAUTOMATOR_APK_VERSION=1.1.5
 STF_BINARIES_VERSION=0.2
 
 RESDIR="resources"
@@ -36,7 +36,7 @@ download_stf(){
 # }
 
 # download_atx
-download_apk
+# download_apk
 download_stf
 
 echo "Everything is downloaded. ^_^"

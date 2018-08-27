@@ -3,30 +3,29 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"net"
 	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/DeanThompson/syncmap"
-
+	"github.com/codeskyblue/goreq"
 	"github.com/codeskyblue/muuid"
-	"github.com/franela/goreq"
 	"github.com/pkg/errors"
+	"github.com/qiniu/log"
 )
 
 type HeartbeatClient struct {
 	ID      string
 	Port    int
-	Uri     string
+	URI     string
 	storage *syncmap.SyncMap
 }
 
 func NewHeartbeatClient(uri string, selfListenPort int) *HeartbeatClient {
 	return &HeartbeatClient{
 		ID:      machineID(),
-		Uri:     uri,
+		URI:     uri,
 		Port:    selfListenPort,
 		storage: syncmap.New(),
 	}
@@ -50,11 +49,10 @@ func (h *HeartbeatClient) sendData(data interface{}) error {
 	}
 	// log.Println("POST", h.Uri, v.Encode())
 	res, err := goreq.Request{
-		Method:      "POST",
-		Uri:         h.Uri,
-		Body:        v.Encode(),
-		ContentType: "application/x-www-form-urlencoded",
-		Timeout:     2 * time.Second,
+		Method:  "POST",
+		Uri:     h.URI,
+		Body:    v,
+		Timeout: 2 * time.Second,
 	}.Do()
 	if err != nil {
 		return err
@@ -78,15 +76,16 @@ func (h *HeartbeatClient) PingForever() {
 		if err := h.Ping(); err != nil {
 			log.Println("Ping", "err:", err)
 			failed = true
-		} else {
-			if failed {
-				failed = false
-				// backalive
-				log.Println("Server backalive, resend data")
-				h.storage.EachItem(func(item *syncmap.Item) {
-					h.sendData(item.Value)
-				})
-			}
+			continue
+		}
+
+		if failed {
+			failed = false
+			// backalive
+			log.Println("Server backalive, resend data")
+			h.storage.EachItem(func(item *syncmap.Item) {
+				h.sendData(item.Value)
+			})
 		}
 	}
 }
