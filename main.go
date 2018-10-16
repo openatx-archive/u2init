@@ -174,6 +174,18 @@ func checkAPK(device *goadb.Device) bool {
 	if err != nil {
 		log.Debugf("package com.github.uiautomator.test not installed")
 	}
+
+	info, err = device.StatPackage("com.easetest.recorder")
+	if err != nil {
+		log.Debugf("package com.easetest.recorder not installed")
+		return false
+	}
+
+	if info.Version.Name != versions.RecordVersion {
+		log.Debugf("package com.easetest.recorder version outdated, %s", info.Version.Name)
+		return false
+	}
+
 	return err == nil
 }
 
@@ -184,6 +196,7 @@ func initAPK(device *goadb.Device) (err error) {
 	}
 	device.RunCommand("pm", "uninstall", "com.github.uiautomator.test")
 	device.RunCommand("pm", "uninstall", "com.github.uiautomator")
+	device.RunCommand("pm", "uninstall", "com.easetest.recorder")
 	err = installAPK(device, filepath.Join(resourcesDir, fmt.Sprintf("app-uiautomator-%s.apk", versions.ApkVersion)))
 	if err != nil {
 		return errors.Wrap(err, "com.github.uiautomator")
@@ -191,6 +204,10 @@ func initAPK(device *goadb.Device) (err error) {
 	err = installAPK(device, filepath.Join(resourcesDir, fmt.Sprintf("app-uiautomator-test-%s.apk", versions.ApkVersion)))
 	if err != nil {
 		return errors.Wrap(err, "com.github.uiautomator.test")
+	}
+	err = installAPK(device, filepath.Join(resourcesDir, fmt.Sprintf("com.easetest.recorder_%s.apk", versions.RecordVersion)))
+	if err != nil {
+		return errors.Wrap(err, "com.easetest.recorder")
 	}
 	if checkAPK(device) {
 		log.Printf("uiautomator-apks successfully installed")
@@ -336,6 +353,7 @@ esac
 type Versions struct {
 	AgentVersion string `json:"atx-agent"`
 	ApkVersion   string `json:"uiautomator-apk"`
+	RecordVersion	string `json:"recorder-apk"`
 }
 
 func getVersions(serverAddr string) (vers Versions, err error) {
@@ -372,6 +390,9 @@ func initResources(serverAddr string) error {
 	if vers.ApkVersion == "" {
 		vers.ApkVersion = "1.1.5"
 	}
+	if vers.RecordVersion == "" {
+		vers.RecordVersion = "1.0"
+	}
 	versions = vers
 	// atx-agent
 	githubMirror := "https://github-mirror.open.netease.com"
@@ -387,6 +408,17 @@ func initResources(serverAddr string) error {
 	}
 	if cached {
 		log.Info("Use cached resource")
+	}
+
+	recordReleaseURL := FormatString("http://arch.s3.netease.com/hzdev-appci/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
+		"RECORD_VERSION": vers.RecordVersion,
+	})
+	recordDst := resourcesDir + FormatString("/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
+		"RECORD_VERSION": vers.RecordVersion,
+	})
+	_, err = httpDownload(recordDst, recordReleaseURL)
+	if err != nil {
+		return err
 	}
 	err = archiver.TarGz.Open(dstPath, resourcesDir+"/atx-agent-armv6")
 	if err != nil {
