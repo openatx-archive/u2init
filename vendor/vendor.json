@@ -3,6 +3,20 @@
 	"ignore": "test",
 	"package": [
 		{
+			"checksumSHA1": "38lMCGbZovH2NnHXxQD5vgQb29k=",
+			"path": "code.cloudfoundry.org/bytefmt",
+			"revision": "2aa6f33b730c79971cfc3c742f279195b0abc627",
+			"revisionTime": "2018-09-04T21:41:32Z",
+			"tree": true
+		},
+		{
+			"checksumSHA1": "GLQ6+ApMezb9rGZB1YQvWJPQJ/Y=",
+			"path": "github.com/dsnet/compress",
+			"revision": "cc9eb1d7ad760af14e8f918698f745e80377af4f",
+			"revisionTime": "2017-12-08T18:51:09Z",
+			"tree": true
+		},
+		{
 			"checksumSHA1": "3fNi2irNlMcDs4Xrn57f+dcWyGo=",
 			"path": "github.com/franela/goreq",
 			"revision": "bcd34c9993f899273c74baaa95e15386cd97b6e7",
