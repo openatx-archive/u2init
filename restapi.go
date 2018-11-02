@@ -186,6 +186,7 @@ func init() {
 
 	router := mux.NewRouter()
 	pm := newPackageManager()
+	pm.dmer.EnableAutoRecycle()
 
 	router.HandleFunc("/devices/{serial}/pkgs", func(w http.ResponseWriter, r *http.Request) {
 		// check params
@@ -245,7 +246,7 @@ func init() {
 			if insInfo.Status == PACKAGE_DOWNLOAD {
 				total := bytefmt.ByteSize(uint64(insInfo.Downloader.ContentLength))
 				copied := bytefmt.ByteSize(uint64(insInfo.Downloader.Written()))
-				insInfo.Description = fmt.Sprintf("%s / %s", copied, total)
+				insInfo.Description = fmt.Sprintf("%s / %s - %s", copied, total, insInfo.Downloader.HumanSpeed())
 			}
 			if insInfo.Status == PACKAGE_PUSHING {
 				d := adb.Device(goadb.DeviceWithSerial(insInfo.Serial))
