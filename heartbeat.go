@@ -1,3 +1,21 @@
+/*
+Heartbeat client use HTTP POST to communicate server
+
+POST $SERVER_URL
+
+Params
+
+id:   clientId
+port: clientPort
+data: json format
+
+Response 200 means success
+
+- First CONNECTION
+Will send all data
+
+- The following CONNECTION
+*/
 package main
 
 import (

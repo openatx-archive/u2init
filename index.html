@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>U2init</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- <link rel="stylesheet" type="text/css" media="screen" href="main.css" /> -->
+    <!-- <script src="main.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.5.17/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <h1>Devices</h1>
+        <table>
+            <tr v-for="v in devs">
+                <td>{{v.serial}}</td>
+                <td>{{v.product}} {{v.model}}</td>
+                <td>
+                    <ul>
+                        <li v-for="ins, id in installStates[v.serial]" :key="id">{{ins.id}}: {{ins.status}}
+                            {{ins.description}}</li>
+                    </ul>
+                </td>
+            </tr>
+        </table>
+        <label>URL</label> <input v-model="url" type="text"> <button @click="installApk">Install</button>
+    </div>
+
+    <script>
+        new Vue({
+            el: "#app",
+            computed: {
+                devs: function () {
+                    return this.devices.map(v => {
+                        console.log(this.installStates)
+                        v.installs = this.installStates[v.serial];
+                        return v
+                    })
+                }
+            },
+            data: {
+                url: "https://gohttp.nie.netease.com/tmp/zgz_netease_150942_android.apk", //"https://gohttp.nie.netease.com/tools/apks/qrcodescan-2.6.0-green.apk",
+                devices: [],
+                installStates: {},
+            },
+            mounted: function () {
+                $.getJSON("/devices").then(function (ret) {
+                    this.devices = ret.data
+                }.bind(this))
+            },
+            methods: {
+                installApk: function (e) {
+                    e.preventDefault()
+                    this.devices.forEach(v => {
+                        $.ajax({
+                            url: "/devices/" + v.serial + "/pkgs",
+                            method: "post",
+                            data: {
+                                url: this.url,
+                            },
+                            success: function (ret) {
+                                console.log(ret)
+                                if (!this.installStates[v.serial]) {
+                                    this.installStates[v.serial] = {}
+                                }
+                                var id = ret.data.id;
+                                this.installStates[v.serial][id] = {}
+                                this.refreshStateAuto(v.serial, id)
+                            }.bind(this)
+                        })
+                    })
+                    $.post("/")
+                },
+                refreshState: function (serial, id, callback) {
+                    $.ajax({
+                        url: "/devices/any/pkgs/" + id,
+                        success: function (ret) {
+                            var state = ret.data.status
+                            if (state == "success" || state == "failure") {
+                                if (callback) callback()
+                            }
+                            this.installStates[serial][id] = ret.data;
+                            this.$forceUpdate()
+                        }.bind(this),
+                        error: function () {
+                            if (callback) callback()
+                        }
+                    })
+                },
+                refreshStateAuto: function (serial, id) {
+                    this.refreshState(serial, id)
+                    var key = setInterval(() => {
+                        this.refreshState(serial, id, function () {
+                            clearInterval(key)
+                        })
+                    }, 1000)
+                }
+            }
+        })
+    </script>
+</body>
+
+</html>

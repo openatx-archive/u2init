@@ -36,16 +36,6 @@ func (s *SyncState) Update() error {
 	return nil
 }
 
-var _idLocker sync.Mutex
-var _id int
-
-func UniqID() string {
-	_idLocker.Lock()
-	defer _idLocker.Unlock()
-	_id++
-	return fmt.Sprintf("%d", _id)
-}
-
 type Dashboard struct {
 	m      sync.Mutex
 	states map[string]*SyncState
@@ -83,9 +73,6 @@ func (d *Dashboard) DeleteAfter(id string, duration time.Duration) {
 
 func registerHTTPHandler() {
 	m := mux.NewRouter()
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, "Hello world!")
-	})
 
 	dashboard := NewDashboard()
 
@@ -107,7 +94,7 @@ func registerHTTPHandler() {
 		aw, err := device.DoSyncHTTPFile(tmpPath, url, 0644)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
-			dashboard.DeleteAfter(id, 1*time.Second)
+			dashboard.DeleteAfter(id, 1*time.Minute)
 			return
 		}
 		state.State = "pushing"
@@ -169,5 +156,5 @@ func registerHTTPHandler() {
 		io.WriteString(w, "canceled")
 	}).Methods("DELETE")
 
-	http.Handle("/", m)
+	http.Handle("/install", m)
 }

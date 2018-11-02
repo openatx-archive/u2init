@@ -219,6 +219,30 @@ func (c *Device) RunCommand(cmd string, args ...string) (string, error) {
 	return outStr, nil
 }
 
+func (c *Device) RunTimeoutCommand(timeout time.Duration, cmd string, args ...string) (string, error) {
+	conn, err := c.OpenCommand(cmd, args...)
+	if err != nil {
+		return "", err
+	}
+	var resp []byte
+	var done = make(chan bool, 1)
+	go func() {
+		resp, err = conn.ReadUntilEof()
+		done <- true
+	}()
+	select {
+	case <-time.After(timeout):
+		conn.Close()
+		return "", fmt.Errorf("command timeout")
+	case <-done:
+		if err != nil {
+			return "", wrapClientError(err, c, "RunTimeoutCommand")
+		}
+		outStr := strings.Replace(string(resp), "\r\n", "\n", -1)
+		return outStr, nil
+	}
+}
+
 func (c *Device) OpenCommand(cmd string, args ...string) (conn *wire.Conn, err error) {
 	cmd, err = prepareCommandLine(cmd, args...)
 	if err != nil {

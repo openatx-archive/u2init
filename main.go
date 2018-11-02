@@ -351,9 +351,9 @@ esac
 }
 
 type Versions struct {
-	AgentVersion string `json:"atx-agent"`
-	ApkVersion   string `json:"uiautomator-apk"`
-	RecordVersion	string `json:"recorder-apk"`
+	AgentVersion  string `json:"atx-agent"`
+	ApkVersion    string `json:"uiautomator-apk"`
+	RecordVersion string `json:"recorder-apk"`
 }
 
 func getVersions(serverAddr string) (vers Versions, err error) {
@@ -410,9 +410,10 @@ func initResources(serverAddr string) error {
 		log.Info("Use cached resource")
 	}
 
-	recordReleaseURL := FormatString("http://arch.s3.netease.com/hzdev-appci/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
-		"RECORD_VERSION": vers.RecordVersion,
-	})
+	recordReleaseURL := githubMirror + "/openatx/android-uiautomator-server/releases/download/1.1.5/com.easetest.recorder_1.1.apk"
+	// recordReleaseURL := FormatString("http://arch.s3.netease.com/hzdev-appci/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
+	// 	"RECORD_VERSION": vers.RecordVersion,
+	// })
 	recordDst := resourcesDir + FormatString("/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
 		"RECORD_VERSION": vers.RecordVersion,
 	})
@@ -424,6 +425,7 @@ func initResources(serverAddr string) error {
 	if err != nil {
 		return errors.Wrap(err, "open targz")
 	}
+
 	// app-uiautomator apks
 	apkReleaseBaseURL := FormatString(githubMirror+"/openatx/android-uiautomator-server/releases/download/${APK_VERSION}/", map[string]string{
 		"APK_VERSION": vers.ApkVersion,
@@ -455,9 +457,6 @@ func main() {
 	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-master/node_modules")
 
 	if *fInitd {
-		// if runtime.GOOS == "windows" {
-		// 	log.Fatal("Only works in linux")
-		// }
 		generateInitd(*fServerAddr)
 		return
 	}
