@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -58,7 +57,7 @@ func (p *ProxyWriter) HumanSpeed() string {
 type Downloader struct {
 	*ProxyWriter
 	Filename      string    `json:"filename"`
-	ContentLength int       `json:"contentLength"`
+	ContentLength int64     `json:"contentLength"`
 	Status        string    `json:"status"`
 	Description   string    `json:"description"`
 	URL           string    `json:"url"`
@@ -184,7 +183,7 @@ func (dm *DownloadManager) locate(url string) *Downloader {
 	if info, err := os.Stat(filename); err == nil {
 		dm.downloads[url] = &Downloader{
 			Filename:      filename,
-			ContentLength: int(info.Size()),
+			ContentLength: info.Size(),
 			URL:           url,
 			CreatedAt:     info.ModTime(),
 			Status:        STATUS_SUCCESS,
@@ -229,7 +228,7 @@ func (dm *DownloadManager) Retrive(url string) (dl *Downloader, err error) {
 	dl.URL = url
 	dl.Filename = filename
 	dl.Status = STATUS_DOWNLOADING
-	dl.ContentLength, _ = strconv.Atoi(resp.Header.Get("Content-Length"))
+	fmt.Sscanf(resp.Header.Get("Content-Length"), "%d", &dl.ContentLength)
 	dl.wg.Add(1)
 	dm.downloads[url] = dl
 
@@ -287,7 +286,7 @@ func (dm *DownloadManager) Recycle() {
 	dls := dm.FinishedDownloads()
 	// minStoreTime := time.Minute * 5
 
-	originSize := 0
+	var originSize int64 = 0
 	for _, dl := range dls {
 		originSize += dl.ContentLength
 	}
