@@ -2,6 +2,7 @@ package adb
 
 import (
 	"bufio"
+	"log"
 	"strings"
 
 	"github.com/yosemite-open/go-adb/internal/errors"
@@ -44,9 +45,11 @@ func parseDeviceList(list string, lineParseFunc func(string) (*DeviceInfo, error
 	scanner := bufio.NewScanner(strings.NewReader(list))
 
 	for scanner.Scan() {
-		device, err := lineParseFunc(scanner.Text())
+		line := scanner.Text()
+		device, err := lineParseFunc(line)
 		if err != nil {
-			return nil, err
+			log.Println("device parse unhandled:", line) // FIXME(ssx): need handle unauthorized device here
+			continue
 		}
 		devices = append(devices, device)
 	}

@@ -3,15 +3,13 @@ package flashget
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/levigross/grequests"
+	download "github.com/joeybloggs/go-download"
 	"github.com/qiniu/log"
 )
 
@@ -142,14 +140,18 @@ func (dm *DownloadManager) Retrive(url string) (dl *Downloader, err error) {
 	}
 
 	// check if url valid
-	resp, err := grequests.Get(url, nil)
+	// resp, err := grequests.Get(url, nil)
+	log.Infof("check url: %s", url)
+	resp, err := download.Open(url, nil)
 	if err != nil {
 		return nil, err
 	}
-	if !resp.Ok {
-		resp.Close()
-		return nil, fmt.Errorf("status: %d, body: %s", resp.StatusCode, resp.String())
-	}
+
+	// resp.Stat
+	// if !resp.Ok {
+	// 	resp.Close()
+	// 	return nil, fmt.Errorf("status: %d, body: %s", resp.StatusCode, resp.String())
+	// }
 
 	// create download file
 	log.Infof("create download %s", url)
@@ -164,7 +166,11 @@ func (dm *DownloadManager) Retrive(url string) (dl *Downloader, err error) {
 	dl.URL = url
 	dl.Filename = filename
 	dl.Status = STATUS_DOWNLOADING
-	dl.ContentLength, _ = strconv.Atoi(resp.Header.Get("Content-Length"))
+
+	fileInfo, _ := resp.Stat()
+	dl.ContentLength = int(fileInfo.Size())
+	// dl.ContentLength, _ = strconv.Atoi(resp.Header.Get("Content-Length"))
+
 	dl.wg.Add(1)
 	dm.downloads[url] = dl
 
