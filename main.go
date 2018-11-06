@@ -69,9 +69,8 @@ func initEverything(device *goadb.Device, serverAddr string) error {
 		return errors.Wrap(err, "atx-agent")
 	}
 
-	device.RunCommand("/data/local/tmp/atx-agent", "-stop") // TODO(ssx): stop atx-agent first to force update
-
-	args := []string{"-d", "-nouia"}
+	device.RunCommand("/data/local/tmp/atx-agent", "-stop")
+	args := []string{"server", "-d", "--nouia"}
 	if serverAddr != "" {
 		args = append(args, "-t", serverAddr)
 	}
@@ -382,17 +381,16 @@ func httpDownload(dst string, url string) (cached bool, err error) {
 }
 
 func initResources(serverAddr string) error {
-	vers, err := getVersions(serverAddr)
-	if err != nil {
-		return err
-	}
-	// TODO: atx-server should contains apk version
-	if vers.ApkVersion == "" {
-		vers.ApkVersion = "1.1.5"
-	}
-	if vers.RecordVersion == "" {
-		vers.RecordVersion = "1.0"
-	}
+	// vers, err := getVersions(serverAddr)
+	// if err != nil {
+	// 	return err
+	// }
+	// TODO: atx-server should not contains apk version
+
+	vers := versions
+	vers.AgentVersion = "0.4.5" // atx_agent
+	vers.ApkVersion = "1.1.5"   // uiautomator_apk
+	vers.RecordVersion = "1.1"  // screenrecord_apk
 	versions = vers
 	// atx-agent
 	githubMirror := "https://github-mirror.open.netease.com"
@@ -410,10 +408,7 @@ func initResources(serverAddr string) error {
 		log.Info("Use cached resource")
 	}
 
-	recordReleaseURL := githubMirror + "/openatx/android-uiautomator-server/releases/download/1.1.5/com.easetest.recorder_1.1.apk"
-	// recordReleaseURL := FormatString("http://arch.s3.netease.com/hzdev-appci/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
-	// 	"RECORD_VERSION": vers.RecordVersion,
-	// })
+	recordReleaseURL := githubMirror + "/openatx/android-uiautomator-server/releases/download/1.1.5/com.easetest.recorder_" + vers.RecordVersion + ".apk"
 	recordDst := resourcesDir + FormatString("/com.easetest.recorder_${RECORD_VERSION}.apk", map[string]string{
 		"RECORD_VERSION": vers.RecordVersion,
 	})
