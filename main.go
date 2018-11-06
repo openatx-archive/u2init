@@ -454,7 +454,7 @@ func main() {
 	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-master/node_modules")
+	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-0.2/node_modules")
 
 	if *fInitd {
 		generateInitd(*fServerAddr)
