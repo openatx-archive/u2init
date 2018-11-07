@@ -13,3 +13,5 @@
 
 resources/
 u2init
+*.un~
+playbook.retry
