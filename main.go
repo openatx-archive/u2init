@@ -56,7 +56,7 @@ func initEverything(device *goadb.Device, serverAddr string) error {
 	if err := initSTFMiniTools(device, abi, sdk); err != nil {
 		return errors.Wrap(err, "mini(cap|touch)")
 	}
-	log.Println("Process app-uiautomator[-test].apk")
+	log.Println("Process app-uiautomator[-test].apk and recorder.apk") // TODO: the recorder.apk ...
 	if err := initAPK(device); err != nil {
 		return errors.Wrap(err, "app-uiautomator[-test].apk")
 	}
@@ -69,7 +69,7 @@ func initEverything(device *goadb.Device, serverAddr string) error {
 		return errors.Wrap(err, "atx-agent")
 	}
 
-	device.RunCommand("/data/local/tmp/atx-agent", "-stop")
+	device.RunCommand("/data/local/tmp/atx-agent", "server", "--stop")
 	args := []string{"server", "-d", "--nouia"}
 	if serverAddr != "" {
 		args = append(args, "-t", serverAddr)
@@ -388,7 +388,7 @@ func initResources(serverAddr string) error {
 	// TODO: atx-server should not contains apk version
 
 	vers := versions
-	vers.AgentVersion = "0.4.5" // atx_agent
+	vers.AgentVersion = "0.4.6" // atx_agent
 	vers.ApkVersion = "1.1.5"   // uiautomator_apk
 	vers.RecordVersion = "1.1"  // screenrecord_apk
 	versions = vers

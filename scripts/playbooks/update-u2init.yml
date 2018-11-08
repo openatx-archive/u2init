@@ -1,0 +1,47 @@
+---
+- hosts: rpis
+  vars:
+    u2dir: /home/pi/opt/u2init-release
+    atxserver: "{{ lookup('env', 'ATXSERVER_URL') or 'wifiphone.nie.netease.com'}}"
+  tasks:
+    - debug:
+        msg: atx-server url is {{atxserver}}
+    
+    - name: init u2init-release directory
+      file: dest={{u2dir}} state=directory
+
+    - name: copy start.sh.j2 to start.sh
+      template:
+        src: ../start.sh.j2
+        dest: "{{u2dir}}/start.sh"
+
+    - name: copy pm2.json.j2
+      template:
+        src: ../pm2.json.j2
+        dest: "{{u2dir}}/pm2.json"
+
+    - name: copy resources
+      copy:
+        src: "../../{{item}}"
+        dest: "{{u2dir}}"
+      with_items:
+        - index.html
+        - u2init
+      notify:
+        - restart
+    
+    - name: make u2init executable
+      file: dest={{u2dir}}/u2init mode=755
+    - name: mkdir resources directory
+      file:
+        dest: "{{u2dir}}/resources"
+        state: directory
+
+    - name: unarchive zip
+      unarchive:
+        src: ../../resources/stf-binaries.zip
+        dest: "{{u2dir}}/resources/"
+  handlers:
+    - name: restart
+      become: yes
+      command: pm2 restart u2init
