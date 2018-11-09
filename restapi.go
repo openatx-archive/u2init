@@ -20,6 +20,14 @@ import (
 	goadb "github.com/yosemite-open/go-adb"
 )
 
+const (
+	PACKAGE_DOWNLOAD = "downloading"
+	PACKAGE_PUSHING  = "pushing"
+	PACKAGE_INSTALL  = "installing"
+	PACKAGE_FAILURE  = "failure"
+	PACKAGE_SUCCESS  = "success"
+)
+
 func renderHTML(w http.ResponseWriter, filename string) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -36,7 +44,7 @@ func renderJSON(w http.ResponseWriter, v interface{}, statusCode ...int) {
 	if len(statusCode) == 1 {
 		w.WriteHeader(statusCode[0])
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Write(data)
 }
@@ -50,18 +58,12 @@ func renderJSONSuccess(w http.ResponseWriter, v interface{}) {
 }
 
 type ADevice struct {
-	Serial  string `json:"serial"`
-	Model   string `json:"model"`
-	Product string `json:"product"`
+	Serial    string `json:"serial"`
+	Model     string `json:"model"`
+	Product   string `json:"product"`
+	Udid      string `json:"udid"`
+	AgentPort int    `json:"agentPort"`
 }
-
-const (
-	PACKAGE_DOWNLOAD = "downloading"
-	PACKAGE_PUSHING  = "pushing"
-	PACKAGE_INSTALL  = "installing"
-	PACKAGE_FAILURE  = "failure"
-	PACKAGE_SUCCESS  = "success"
-)
 
 type InstallInfo struct {
 	Id             string               `json:"id"`
@@ -86,7 +88,8 @@ func newPackageManager() *PackageManager {
 	}
 }
 
-func (pm *PackageManager) InstallAPKFromURL(serial, url string) (info InstallInfo, err error) {
+// func (pm *PackageManager) PushFromUrl(serial, url string) ()
+func (pm *PackageManager) handleAPKFromUrl(serial, url string, noInstall bool) (info InstallInfo, err error) {
 	id := UniqID()
 	dl, err := pm.dmer.Retrive(url)
 	if err != nil {
@@ -128,13 +131,21 @@ func (pm *PackageManager) InstallAPKFromURL(serial, url string) (info InstallInf
 			insInfo.Description = "push file to device err: " + er.Error()
 			return
 		}
-		defer d.RunCommand("rm", dstFilepath) // clean apk
+
+		if noInstall {
+			insInfo.Description = "Skip install, just pushed"
+			insInfo.Status = PACKAGE_SUCCESS
+			return
+		}
+
+		// process install
+		defer d.RunCommand("rm", dstFilepath)
 
 		insInfo.Status = PACKAGE_INSTALL
 		output, er := d.RunTimeoutCommand(time.Minute*5, "pm", "install", "-r", "-t", dstFilepath)
 		if er != nil {
-			insInfo.Status = PACKAGE_FAILURE
 			insInfo.Description = "pm install error: " + er.Error()
+			insInfo.Status = PACKAGE_FAILURE
 			return
 		}
 		output = strings.TrimSpace(output)
@@ -164,34 +175,33 @@ func init() {
 		renderHTML(w, "index.html")
 	})
 
-	http.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
-		infos, err := adb.ListDevices()
-		if err != nil {
-			renderJSON(w, map[string]interface{}{
-				"success":     false,
-				"description": "list device: " + err.Error(),
-			}, 500)
-			return
-		}
-		devs := make([]ADevice, 0, len(infos))
-		for _, info := range infos {
-			devs = append(devs, ADevice{
-				Serial:  info.Serial,
-				Model:   info.Model,
-				Product: info.Product,
-			})
-		}
-		renderJSONSuccess(w, devs)
-	})
-
 	router := mux.NewRouter()
 	pm := newPackageManager()
 	pm.dmer.EnableAutoRecycle()
+
+	router.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
+		devs := dm.All()
+		renderJSONSuccess(w, devs)
+	})
+
+	router.HandleFunc("/devices/{serial}/info", func(w http.ResponseWriter, r *http.Request) {
+		serial := mux.Vars(r)["serial"]
+		d, ok := dm.Get(serial)
+		if !ok {
+			renderJSON(w, map[string]interface{}{
+				"success":     false,
+				"description": fmt.Sprintf("serial %s not found", serial),
+			}, 404)
+			return
+		}
+		renderJSONSuccess(w, d)
+	})
 
 	router.HandleFunc("/devices/{serial}/pkgs", func(w http.ResponseWriter, r *http.Request) {
 		// check params
 		serial := mux.Vars(r)["serial"]
 		url := r.FormValue("url")
+		noInstall := strings.ToLower(r.FormValue("noInstall")) == "true"
 		if url == "" {
 			renderJSON(w, map[string]interface{}{
 				"success":     false,
@@ -212,7 +222,7 @@ func init() {
 		}
 
 		// call download manager to download file
-		insInfo, err := pm.InstallAPKFromURL(serial, url)
+		insInfo, err := pm.handleAPKFromUrl(serial, url, noInstall)
 		if err != nil {
 			renderJSON(w, map[string]interface{}{
 				"success":     false,

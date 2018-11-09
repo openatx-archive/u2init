@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -36,6 +37,12 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	vers := versions
+	vers.AgentVersion = "0.4.6" // atx_agent
+	vers.ApkVersion = "1.1.5"   // uiautomator_apk
+	vers.RecordVersion = "1.2"  // screenrecord_apk
+	versions = vers
 }
 
 func initEverything(device *goadb.Device, serverAddr string) error {
@@ -262,6 +269,44 @@ func deviceUdid(device *goadb.Device) (udid string, port int, err error) {
 	return v.Udid, forwardedPort, nil
 }
 
+type DeviceManager struct {
+	mu      sync.Mutex
+	devices map[string]ADevice
+}
+
+func (dm *DeviceManager) Get(serial string) (d ADevice, exists bool) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	d, exists = dm.devices[serial]
+	return
+}
+func (dm *DeviceManager) Add(info ADevice) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	if dm.devices == nil {
+		dm.devices = make(map[string]ADevice)
+	}
+	dm.devices[info.Serial] = info
+}
+
+func (dm *DeviceManager) Remove(serial string) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	delete(dm.devices, serial)
+}
+
+func (dm *DeviceManager) All() []ADevice {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	devs := make([]ADevice, 0, len(dm.devices))
+	for _, v := range dm.devices {
+		devs = append(devs, v)
+	}
+	return devs
+}
+
+var dm = &DeviceManager{}
+
 func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 	watcher := adb.NewDeviceWatcher()
 	for event := range watcher.C() {
@@ -283,9 +328,23 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 				log.Println(event.Serial, err)
 				continue
 			}
+			devInfo, err := device.DeviceInfo()
+			if err != nil {
+				log.Println(event.Serial, err)
+				continue
+			}
+
 			log.Println(event.Serial, "UDID", udid)
 			log.Println(event.Serial, "7912 forward to", forwardedPort)
 			if heart != nil {
+				// device manager
+				dm.Add(ADevice{
+					Serial:    event.Serial,
+					Model:     devInfo.Model,
+					Product:   devInfo.Product,
+					Udid:      udid,
+					AgentPort: forwardedPort,
+				})
 				heart.AddData(event.Serial, map[string]interface{}{
 					"udid":                  udid,
 					"status":                "online",
@@ -296,6 +355,7 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 		}
 		if event.WentOffline() {
 			log.Printf("Device %s went offline", event.Serial)
+			dm.Remove(event.Serial)
 			if heart != nil {
 				heart.Delete(event.Serial)
 			}
@@ -355,19 +415,6 @@ type Versions struct {
 	RecordVersion string `json:"recorder-apk"`
 }
 
-func getVersions(serverAddr string) (vers Versions, err error) {
-	res, err := goreq.Request{
-		Method: "GET",
-		Uri:    serverAddr + "/version",
-	}.Do()
-	if err != nil {
-		return
-	}
-	defer res.Body.Close()
-	err = res.Body.FromJsonTo(&vers)
-	return
-}
-
 func httpDownload(dst string, url string) (cached bool, err error) {
 	if _, err := os.Stat(dst); err == nil {
 		return true, nil
@@ -381,18 +428,7 @@ func httpDownload(dst string, url string) (cached bool, err error) {
 }
 
 func initResources(serverAddr string) error {
-	// vers, err := getVersions(serverAddr)
-	// if err != nil {
-	// 	return err
-	// }
-	// TODO: atx-server should not contains apk version
-
 	vers := versions
-	vers.AgentVersion = "0.4.6" // atx_agent
-	vers.ApkVersion = "1.1.5"   // uiautomator_apk
-	vers.RecordVersion = "1.1"  // screenrecord_apk
-	versions = vers
-	// atx-agent
 	githubMirror := "https://github-mirror.open.netease.com"
 	agentReleaseURL := FormatString(githubMirror+"/openatx/atx-agent/releases/download/${ATX_AGENT_VERSION}/atx-agent_${ATX_AGENT_VERSION}_linux_armv6.tar.gz", map[string]string{
 		"ATX_AGENT_VERSION": vers.AgentVersion,
