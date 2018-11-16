@@ -85,7 +85,7 @@ func (k *ATXKeeper) processAgent() error {
 	if cached {
 		log.Info("Use cached resource")
 	}
-	err = archiver.TarGz.Open(dstPath, resourcesDir+"/atx-agent-armv6")
+	err = archiver.DefaultTarGz.Unarchive(dstPath, resourcesDir+"/atx-agent-armv6")
 	if err != nil {
 		return errors.Wrap(err, "open targz")
 	}
