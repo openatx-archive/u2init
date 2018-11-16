@@ -138,9 +138,6 @@ func (pm *PackageManager) handleAPKFromUrl(serial, url string, noInstall bool) (
 			return
 		}
 
-		// process install
-		defer d.RunCommand("rm", dstFilepath)
-
 		insInfo.Status = PACKAGE_INSTALL
 		output, er := d.RunTimeoutCommand(time.Minute*5, "pm", "install", "-r", "-t", dstFilepath)
 		if er != nil {
@@ -179,7 +176,8 @@ func init() {
 	pm := newPackageManager()
 	pm.dmer.EnableAutoRecycle()
 
-	router.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
+	// Note, use router.HandleFunc will redirect /devices to /devices/
+	http.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
 		devs := dm.All()
 		renderJSONSuccess(w, devs)
 	})

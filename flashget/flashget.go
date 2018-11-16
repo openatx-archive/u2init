@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,8 +11,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/bytefmt"
-
-	"github.com/levigross/grequests"
+	"github.com/cavaliercoder/grab"
 	"github.com/qiniu/log"
 )
 
@@ -25,37 +23,7 @@ const (
 	maxStoreSize = 3 << 30 // 3 GB
 )
 
-// ProxyWriter record download bytes
-type ProxyWriter struct {
-	W         io.Writer
-	written   int
-	createdAt time.Time
-}
-
-func NewProxyWriter(wr io.Writer) *ProxyWriter {
-	return &ProxyWriter{
-		W:         wr,
-		createdAt: time.Now(),
-	}
-}
-
-func (p *ProxyWriter) Write(data []byte) (n int, err error) {
-	n, err = p.W.Write(data)
-	p.written += n
-	return
-}
-
-func (p *ProxyWriter) Written() int {
-	return p.written
-}
-
-func (p *ProxyWriter) HumanSpeed() string {
-	byteps := uint64(float64(p.written) / time.Since(p.createdAt).Seconds())
-	return bytefmt.ByteSize(byteps) + "/s"
-}
-
 type Downloader struct {
-	*ProxyWriter
 	Filename      string    `json:"filename"`
 	ContentLength int64     `json:"contentLength"`
 	Status        string    `json:"status"`
@@ -65,17 +33,15 @@ type Downloader struct {
 	FinishedAt    time.Time `json:"finishedAt"`
 	AccessedAt    time.Time `json:"accessedAt"` // TODO(ssx): need to use some times
 	wg            sync.WaitGroup
+	resp          *grab.Response
 }
 
 func (dl *Downloader) Wait() {
 	dl.wg.Wait()
 }
 
-func (dl *Downloader) Written() int {
-	if dl.ProxyWriter == nil {
-		return 0
-	}
-	return dl.ProxyWriter.Written()
+func (dl *Downloader) Written() int64 {
+	return dl.resp.BytesComplete()
 }
 
 func (dl *Downloader) Finished() bool {
@@ -93,10 +59,15 @@ func (dl *Downloader) isFileRemoved(filename string) bool {
 
 // Remove downloaded file
 func (dl *Downloader) Remove() bool {
-	// use file store in hash, just remove directory
 	return os.Remove(dl.Filename) == nil
 }
 
+func (dl *Downloader) HumanSpeed() string {
+	byteps := uint64(dl.resp.BytesPerSecond())
+	return bytefmt.ByteSize(byteps) + "/s"
+}
+
+// DownloadManager manager all Downloaders
 type DownloadManager struct {
 	downloads map[string]*Downloader
 	mu        sync.RWMutex
@@ -108,11 +79,10 @@ func NewDownloadManager() *DownloadManager {
 	}
 }
 
-// wr: is to record how many bytes copied
-func (dm *DownloadManager) newDownloader(wr io.Writer) (dl *Downloader) {
+func (dm *DownloadManager) newDownloader(resp *grab.Response) (dl *Downloader) {
 	return &Downloader{
-		ProxyWriter: NewProxyWriter(wr),
-		CreatedAt:   time.Now(),
+		resp:      resp,
+		CreatedAt: time.Now(),
 	}
 }
 
@@ -205,59 +175,53 @@ func (dm *DownloadManager) Retrive(url string) (dl *Downloader, err error) {
 	}
 
 	// check if url valid
+	// GET need to support ranges
 	log.Infof("check url: %s", url)
-	resp, err := grequests.Get(url, nil)
+	filename := dm.url2filename(url)
+	tmpfilename := filename + ".cache"
+	client := grab.NewClient()
+
+	req, err := grab.NewRequest(tmpfilename, url)
 	if err != nil {
 		return nil, err
 	}
-	if !resp.Ok {
-		resp.Close()
-		return nil, fmt.Errorf("status: %d, body: %s", resp.StatusCode, resp.String())
-	}
+	fmt.Printf("Downloading %v...\n", req.URL())
+
+	resp := client.Do(req)
 
 	// create download file
 	log.Infof("create download %s", url)
-	filename := dm.url2filename(url)
-	tmpfilename := filename + ".cache"
-	f, err := os.Create(tmpfilename)
-	if err != nil {
-		return nil, err
-	}
 
-	dl = dm.newDownloader(f)
+	// dl = dm.newDownloader(f)
+	dl = dm.newDownloader(resp)
 	dl.URL = url
 	dl.Filename = filename
 	dl.Status = STATUS_DOWNLOADING
-	fmt.Sscanf(resp.Header.Get("Content-Length"), "%d", &dl.ContentLength)
+	dl.ContentLength = resp.Size
 	dl.wg.Add(1)
 	dm.downloads[url] = dl
 
 	go func() {
-		// defer resp.Body.Close()
-		defer resp.Close()
 		defer dl.wg.Done()
 		defer func() { dl.FinishedAt = time.Now() }()
-		nbytes, err := io.Copy(dl.ProxyWriter, resp)
-		if err != nil {
+
+		<-resp.Done
+
+		if err := resp.Err(); err != nil {
 			dl.Status = STATUS_FAILURE
 			dl.Description = err.Error()
-			f.Close()
 			os.Remove(tmpfilename)
 			log.Warnf("download failed, url: %s", url)
 			return
 		}
-		if err = f.Close(); err != nil {
-			dl.Status = STATUS_FAILURE
-			dl.Description = "file close err: " + err.Error()
-			return
-		}
+
 		if err = os.Rename(tmpfilename, filename); err != nil {
 			dl.Status = STATUS_FAILURE
 			dl.Description = "file rename err: " + err.Error()
 			return
 		}
 		dl.Status = STATUS_SUCCESS
-		log.Infof("download success, nbytes: %d, url: %s", nbytes, url)
+		log.Infof("download save to %v", resp.Filename)
 	}()
 	return dl, nil
 }
@@ -274,7 +238,7 @@ func (dm *DownloadManager) EnableAutoRecycle() {
 
 	go func() {
 		for {
-			log.Infof("recycle begins")
+			// log.Infof("recycle begins")
 			dm.Recycle()
 			time.Sleep(50 * time.Second) //time.Minute)
 		}
