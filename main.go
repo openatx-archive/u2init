@@ -45,13 +45,13 @@ func init() {
 // Others works in both directory
 const (
 	PATHENV       = "PATH=$PATH:/data/local/tmp:/data/data/com.android.shell"
-	GITHUB_MIRROR = "https://github-mirror.open.netease.com"
+	GITHUB_MIRROR = "https://github.com"
 )
 
 var (
-	AGENT_VERSION  = "0.4.8"
+	AGENT_VERSION  = "0.4.9"
 	RECORD_VERSION = "1.3"
-	APK_VERSION    = "1.1.5"
+	APK_VERSION    = "1.1.7"
 	SKIP_DEV       = false
 )
 
@@ -86,9 +86,9 @@ func (k *ATXKeeper) processAgent() error {
 		log.Info("Use cached resource")
 	}
 	err = archiver.DefaultTarGz.Unarchive(dstPath, resourcesDir+"/atx-agent-armv6")
-	if err != nil {
-		return errors.Wrap(err, "open targz")
-	}
+	// if err != nil {
+	// 	return errors.Wrap(err, "open targz")
+	// }
 
 	atxAgentPath := filepath.Join(resourcesDir, "atx-agent-armv6/atx-agent")
 	if err := writeFileToDevice(k.device, atxAgentPath, "/data/local/tmp/atx-agent", 0755); err != nil {
@@ -299,10 +299,10 @@ func initEverything(device *goadb.Device, serverAddr string) error {
 		log.Warnf("install uiautomator failed")
 		return err
 	}
-	if err := ak.processRecordAPK(); err != nil {
-		log.Warnf("install record apk failed")
-		return err
-	}
+	// if err := ak.processRecordAPK(); err != nil {
+	// 	log.Warnf("install record apk failed")
+	// 	return err
+	// }
 	return nil
 }
 
@@ -420,8 +420,8 @@ func watchAndInit(serverAddr string, heart *HeartbeatClient) {
 			}
 			startService(device)
 			// start identify
-			// device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
-			// 	"-e", "theme", "black")
+			device.RunCommand("am", "start", "-n", "com.github.uiautomator/.IdentifyActivity",
+				"-e", "theme", "black")
 
 			udid, forwardedPort, err := deviceUdid(device)
 			if err != nil {

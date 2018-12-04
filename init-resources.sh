@@ -13,7 +13,7 @@ RESDIR="resources"
 mkdir -p $RESDIR
 
 GITHUB_URL="https://github.com"
-GITHUB_URL="https://github-mirror.open.netease.com"
+# GITHUB_URL="https://github-mirror.open.netease.com"
 
 # https://github.com/openatx/stf-binaries/archive/0.1.zip
 
