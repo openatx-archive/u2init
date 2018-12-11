@@ -49,7 +49,7 @@ const (
 )
 
 var (
-	AGENT_VERSION  = "0.4.9"
+	AGENT_VERSION  = "0.5.1"
 	RECORD_VERSION = "1.3"
 	APK_VERSION    = "1.1.7"
 	SKIP_DEV       = false
@@ -530,6 +530,7 @@ func main() {
 	fport := kingpin.Flag("port", "listen port, random free port if not specified").Short('p').Int()
 	fServerAddr := kingpin.Flag("server", "atx-server address, format must be ip:port or hostname").Short('s').Required().String()
 	fInitd := kingpin.Flag("initd", "Generate /etc/init.d file (Debian only)").Bool()
+	fAgentVersion := kingpin.Flag("agent", "atx-agent version code, format must be like '0.5.1'").Short('a').String()
 
 	execDir, err := os.Executable()
 	if err != nil {
@@ -541,6 +542,9 @@ func main() {
 	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
+	if *fAgentVersion != ""{
+		AGENT_VERSION = *fAgentVersion
+	}
 	stfBinariesDir = filepath.Join(resourcesDir, "stf-binaries-0.2/node_modules")
 
 	if *fInitd {
