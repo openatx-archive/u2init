@@ -85,27 +85,35 @@ func (k *ATXKeeper) processAgent() error {
 	if cached {
 		log.Info("Use cached resource")
 	}
+	err = os.RemoveAll(resourcesDir+"/atx-agent-armv6")
+	if err != nil{
+		log.Infof("clear atx-agent-armv6 directory", err)
+	}
 	err = archiver.DefaultTarGz.Unarchive(dstPath, resourcesDir+"/atx-agent-armv6")
-	// if err != nil {
-	// 	return errors.Wrap(err, "open targz")
-	// }
+	if err != nil{
+		return errors.Wrap(err, "unzip files")
+	}
 
 	atxAgentPath := filepath.Join(resourcesDir, "atx-agent-armv6/atx-agent")
 	if err := writeFileToDevice(k.device, atxAgentPath, "/data/local/tmp/atx-agent", 0755); err != nil {
 		return errors.Wrap(err, "atx-agent")
 	}
-	output, _ := k.device.RunCommand(PATHENV, "atx-agent", "version")
-	log.Infof("new atx-agent version %s", output)
-	k.device.RunCommand(PATHENV, "atx-agent", "server", "--stop")
+	_, err = k.device.RunCommand(PATHENV, "atx-agent", "server", "--stop")
+	if err != nil{
+		return errors.Wrap(err, "stop atx-agent")
+	}
 	args := []string{"atx-agent", "server", "-d", "--nouia"}
 	if k.ServerAddr != "" {
 		args = append(args, "-t", k.ServerAddr)
 	}
-	output, err = k.device.RunCommand(PATHENV, args...)
+	output, err := k.device.RunCommand(PATHENV, args...)
 	output = strings.TrimSpace(output)
 	if err != nil {
 		return errors.Wrap(err, "start atx-agent")
 	}
+
+	output, _ = k.device.RunCommand(PATHENV, "atx-agent", "version")
+	log.Infof("new atx-agent version %s", output)
 	serial, _ := k.device.Serial()
 	fmt.Println(serial, output)
 	return nil
